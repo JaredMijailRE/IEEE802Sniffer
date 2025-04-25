@@ -2,10 +2,17 @@ package main
 
 import (
 	"github.com/JaredMijailRE/IEEE802Sniffer/lan"
+	"github.com/JaredMijailRE/IEEE802Sniffer/wlan"
 )
 
 func main() {
-	lan.Set_monitor_Lan()
+	wlan.InitWlan()
+	wlan.CapturaWLAN()
 
-	defer lan.LanHandle.Close()
+	if wlan.WlanHandle == nil {
+		defer lan.LanHandle.Close()
+	}
+	if lan.LanHandle == nil {
+		defer wlan.WlanHandle.Close()
+	}
 }
