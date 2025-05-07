@@ -26,7 +26,11 @@ func statusBackend(c *fiber.Ctx) error {
 func getDevices(c *fiber.Ctx) error {
 	deviceNames := make([]string, len(base.Devices))
 	for i, device := range base.Devices {
-		deviceNames[i] = device.Description
+		if device.Description == "" {
+			deviceNames[i] = device.Name
+		} else {
+			deviceNames[i] = device.Description
+		}
 	}
 	return c.JSON(deviceNames)
 }
