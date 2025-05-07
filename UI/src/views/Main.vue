@@ -181,6 +181,18 @@ const connectWebSocket = () => {
 
 const togglePause = () => {
   isPaused.value = !isPaused.value
+  if (isPaused.value) {
+    // Desconectar WebSocket al pausar
+    if (ws.value) {
+      ws.value.close()
+      ws.value = null
+    }
+  } else {
+    // Reconectar WebSocket al reanudar
+    if (isConnected.value) {
+      connectWebSocket()
+    }
+  }
 }
 
 const formatTimestamp = (timestamp) => {
