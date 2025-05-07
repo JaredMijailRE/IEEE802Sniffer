@@ -7,20 +7,38 @@
       <h1>IEEE 802 Sniffer</h1>
     </div>
     <div class="navbar-menu">
-      <div class="navbar-end">
-        <a href="#" class="navbar-item">
-          <i class="fas fa-cog"></i>
-        </a>
-        <a href="#" class="navbar-item">
-          <i class="fas fa-question-circle"></i>
-        </a>
+      <div class="status-indicators">
+        <div class="status-item" :class="{ 'active': backendStatus.devices }">
+          <i class="fas fa-network-wired"></i>
+          <span>{{ backendStatus.devices ? 'Online' : 'Offline' }}</span>
+        </div>
       </div>
     </div>
   </nav>
 </template>
 
 <script setup>
-// Component logic here
+import { ref, onMounted } from 'vue'
+const backendStatus = ref({
+  devices: false,
+  monitor: false
+})
+
+const fetchStatus = async () => {
+  try {
+    const response = await fetch('http://localhost:3000/status')
+    const data = await response.json()
+    backendStatus.value = data
+  } catch (error) {
+    console.error('Error fetching backend status:', error)
+  }
+}
+
+onMounted(() => {
+  fetchStatus()
+  // Actualizar el estado cada 5 segundos
+  setInterval(fetchStatus, 5000)
+})
 </script>
 
 <style scoped>
@@ -85,5 +103,37 @@ h1 {
   font-size: 1.5rem;
   margin: 0;
   color: var(--text-color);
+}
+
+.status-indicators {
+  display: flex;
+  gap: 1rem;
+  margin-right: 1rem;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  background-color: var(--error-color, #ff4444);
+  color: white;
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.status-item.active {
+  background-color: var(--success-color, #00C851);
+}
+
+.status-item i {
+  font-size: 1rem;
+}
+
+.status-item span {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 </style> 
