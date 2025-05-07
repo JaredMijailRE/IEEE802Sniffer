@@ -139,7 +139,7 @@ const checkStatus = async () => {
     const response = await fetch('http://localhost:3000/status')
     const status = await response.json()
     isConnected.value = status.devices && status.monitor
-    if (isConnected.value) {
+    if (isConnected.value && !ws.value) {
       connectWebSocket()
     }
   } catch (error) {
@@ -150,7 +150,7 @@ const checkStatus = async () => {
 
 const connectWebSocket = () => {
   if (ws.value) {
-    ws.value.close()
+    return
   }
 
   ws.value = new WebSocket('ws://localhost:3000/ws/analizer/raw')
@@ -174,25 +174,16 @@ const connectWebSocket = () => {
 
   ws.value.onclose = () => {
     console.log('WebSocket connection closed')
-    isConnected.value = false
-    setTimeout(checkStatus, 5000)
+    ws.value = null
+    if (!isPaused.value) {
+      isConnected.value = false
+      setTimeout(checkStatus, 5000)
+    }
   }
 }
 
 const togglePause = () => {
   isPaused.value = !isPaused.value
-  if (isPaused.value) {
-    // Desconectar WebSocket al pausar
-    if (ws.value) {
-      ws.value.close()
-      ws.value = null
-    }
-  } else {
-    // Reconectar WebSocket al reanudar
-    if (isConnected.value) {
-      connectWebSocket()
-    }
-  }
 }
 
 const formatTimestamp = (timestamp) => {
