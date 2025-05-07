@@ -1,6 +1,12 @@
 <template>
   <div class="main-container">
-    <h1>Packet Analyzer</h1>
+    <div class="header">
+      <h1>Packet Analyzer</h1>
+      <button class="pause-btn" @click="togglePause" :class="{ 'paused': isPaused }">
+        <i :class="isPaused ? 'fas fa-play' : 'fas fa-pause'"></i>
+        {{ isPaused ? 'Resume' : 'Pause' }}
+      </button>
+    </div>
     <div class="content">
       <div v-if="!isConnected" class="disconnected-message">
         <i class="fas fa-wifi-slash"></i>
@@ -126,6 +132,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 const packets = ref([])
 const ws = ref(null)
 const isConnected = ref(false)
+const isPaused = ref(false)
 
 const checkStatus = async () => {
   try {
@@ -149,12 +156,14 @@ const connectWebSocket = () => {
   ws.value = new WebSocket('ws://localhost:3000/ws/analizer/raw')
 
   ws.value.onmessage = (event) => {
-    console.log(event.data)
-    const packet = JSON.parse(event.data)
-    packets.value.unshift(packet)
-    
-    if (packets.value.length > 100) {
-      packets.value.pop()
+    if (!isPaused.value) {
+      const packet = JSON.parse(event.data)
+      packets.value.unshift(packet)
+      
+      // Mantener solo los últimos 10 paquetes
+      if (packets.value.length > 10) {
+        packets.value.pop()
+      }
     }
   }
 
@@ -170,6 +179,10 @@ const connectWebSocket = () => {
   }
 }
 
+const togglePause = () => {
+  isPaused.value = !isPaused.value
+}
+
 const formatTimestamp = (timestamp) => {
   const date = new Date(timestamp)
   return date.toLocaleTimeString()
@@ -177,7 +190,6 @@ const formatTimestamp = (timestamp) => {
 
 onMounted(() => {
   checkStatus()
-  // Verificar el estado cada 5 segundos
   setInterval(checkStatus, 5000)
 })
 
@@ -202,6 +214,38 @@ onUnmounted(() => {
 h1 {
   margin-bottom: 1rem;
   color: var(--accent-color);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.pause-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.pause-btn:hover {
+  background-color: var(--accent-color-hover);
+}
+
+.pause-btn.paused {
+  background-color: var(--success-color);
+}
+
+.pause-btn i {
+  font-size: 1rem;
 }
 
 .content {
