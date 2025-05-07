@@ -24,6 +24,11 @@ func SetupView(app *fiber.App) {
 }
 
 func wsAnalizer(c *websocket.Conn) {
+	if b.Monitor == nil {
+		log.Println("Monitor not initialized")
+		return
+	}
+
 	packetSource := gopacket.NewPacketSource(b.Monitor, b.Monitor.LinkType())
 
 	for packet := range packetSource.Packets() {
