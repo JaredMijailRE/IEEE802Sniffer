@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/JaredMijailRE/IEEE802Sniffer/base"
 	"github.com/JaredMijailRE/IEEE802Sniffer/router/conf"
@@ -12,11 +13,19 @@ import (
 
 func main() {
 	app := fiber.New(fiber.Config{
-		Prefork:      true,
-		AppName:      "IEEE-API-SNIFFER",
-		JSONEncoder:  json.Marshal,
-		JSONDecoder:  json.Unmarshal,
-		ServerHeader: "IEEE-API-SNIFFER",
+		Prefork:                 true,
+		AppName:                 "IEEE-API-SNIFFER",
+		JSONEncoder:             json.Marshal,
+		JSONDecoder:             json.Unmarshal,
+		ReadTimeout:             5 * time.Second,
+		WriteTimeout:            5 * time.Second,
+		IdleTimeout:             120 * time.Second,
+		ReadBufferSize:          4096,
+		WriteBufferSize:         4096,
+		EnableTrustedProxyCheck: false,
+		DisableKeepalive:        false,
+		ServerHeader:            "IEEE-API-SNIFFER",
+		Immutable:               true,
 	})
 
 	app.Use(cors.New(cors.Config{
