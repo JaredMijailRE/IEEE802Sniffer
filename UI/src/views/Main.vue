@@ -37,6 +37,10 @@
                   <span class="label">Type:</span>
                   <span class="value">{{ packet.ethernet.eth_type }}</span>
                 </div>
+                <div v-if="packet.ethernet.vlan" class="detail-item">
+                  <span class="label">VLAN ID:</span>
+                  <span class="value">{{ packet.ethernet.vlan }}</span>
+                </div>
               </div>
             </div>
 
@@ -49,12 +53,24 @@
                   <span class="value">{{ packet.radiotap.channel_freq }} MHz</span>
                 </div>
                 <div class="detail-item">
+                  <span class="label">Channel Flags:</span>
+                  <span class="value">0x{{ packet.radiotap.channel_flags.toString(16) }}</span>
+                </div>
+                <div class="detail-item">
                   <span class="label">Signal:</span>
                   <span class="value">{{ packet.radiotap.dbm_antenna_sig }} dBm</span>
                 </div>
                 <div class="detail-item">
                   <span class="label">Data Rate:</span>
                   <span class="value">{{ packet.radiotap.data_rate }} Mbps</span>
+                </div>
+                <div class="detail-item">
+                  <span class="label">Flags:</span>
+                  <span class="value">0x{{ packet.radiotap.flags.toString(16) }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="label">Antenna:</span>
+                  <span class="value">{{ packet.radiotap.antenna }}</span>
                 </div>
               </div>
             </div>
@@ -87,6 +103,14 @@
                   <span class="label">Address 4:</span>
                   <span class="value">{{ packet.dot11.addr4 }}</span>
                 </div>
+                <div class="detail-item">
+                  <span class="label">Sequence Number:</span>
+                  <span class="value">{{ packet.dot11.sequence }}</span>
+                </div>
+                <div class="detail-item">
+                  <span class="label">Fragment Number:</span>
+                  <span class="value">{{ packet.dot11.fragment }}</span>
+                </div>
               </div>
             </div>
 
@@ -109,10 +133,14 @@
               </div>
             </div>
 
-            <!-- Payload Length -->
+            <!-- Packet Info -->
             <div class="detail-section">
               <h3>Packet Info</h3>
               <div class="detail-grid">
+                <div class="detail-item">
+                  <span class="label">Timestamp:</span>
+                  <span class="value">{{ formatTimestamp(packet.timestamp) }}</span>
+                </div>
                 <div class="detail-item">
                   <span class="label">Payload Length:</span>
                   <span class="value">{{ packet.payload_length }} bytes</span>
