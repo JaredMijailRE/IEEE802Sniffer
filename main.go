@@ -39,4 +39,6 @@ func main() {
 	view.SetupView(app)
 
 	app.Listen(":3000")
+
+	defer base.Monitor.Close()
 }
