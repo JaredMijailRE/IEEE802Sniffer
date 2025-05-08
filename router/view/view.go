@@ -2,6 +2,7 @@ package view
 
 import (
 	"log"
+	"strings"
 
 	b "github.com/JaredMijailRE/IEEE802Sniffer/base"
 	"github.com/gofiber/fiber/v2"
@@ -30,14 +31,19 @@ func wsAnalizer(c *websocket.Conn) {
 
 	if b.Monitor == "" {
 		log.Println("Monitor not initialized")
+		c.Close()
 		return
 	}
 
 	monitor, err := pcap.OpenLive(b.Monitor, 262144, true, pcap.BlockForever)
 	if err != nil {
-		log.Printf("error creating the monitor %s", err)
+		log.Printf("Error creating the monitor %s: %v", b.Monitor, err)
+		c.Close()
+		return
 	}
 	defer monitor.Close()
+
+	log.Printf("Sniffing on interface %s with link type: %s", b.Monitor, monitor.LinkType().String())
 
 	packetSource := gopacket.NewPacketSource(monitor, monitor.LinkType())
 
@@ -47,8 +53,13 @@ func wsAnalizer(c *websocket.Conn) {
 			PayloadLen: len(packet.Data()),
 		}
 
-		if rt := packet.Layer(layers.LayerTypeRadioTap); rt != nil {
-			r := rt.(*layers.RadioTap)
+		// Layer presence flags
+		// hasRadiotap := false // Removed as it's not used elsewhere for now
+		hasDot11 := false
+		hasEthernet := false
+
+		if rtLayer := packet.Layer(layers.LayerTypeRadioTap); rtLayer != nil {
+			r := rtLayer.(*layers.RadioTap)
 			info.Radiotap = &b.RadiotapInfo{
 				ChannelFreq:   uint16(r.ChannelFrequency),
 				ChannelFlags:  uint16(r.ChannelFlags),
@@ -57,11 +68,11 @@ func wsAnalizer(c *websocket.Conn) {
 				DBMAntennaSig: r.DBMAntennaSignal,
 				Antenna:       uint8(r.Antenna),
 			}
+			// hasRadiotap = true // Not strictly needed for current logic if only used for this log block
 		}
 
-		// 802.11
-		if dot11 := packet.Layer(layers.LayerTypeDot11); dot11 != nil {
-			d := dot11.(*layers.Dot11)
+		if dot11Layer := packet.Layer(layers.LayerTypeDot11); dot11Layer != nil {
+			d := dot11Layer.(*layers.Dot11)
 			d11 := b.Dot11Info{
 				Type:     d.Type.String(),
 				Subtype:  d.LayerType().String(),
@@ -75,11 +86,11 @@ func wsAnalizer(c *websocket.Conn) {
 				d11.Addr4 = d.Address4.String()
 			}
 			info.Dot11 = &d11
+			hasDot11 = true
 		}
 
-		// Ethernet (802.3)
-		if eth := packet.Layer(layers.LayerTypeEthernet); eth != nil {
-			e := eth.(*layers.Ethernet)
+		if ethLayer := packet.Layer(layers.LayerTypeEthernet); ethLayer != nil {
+			e := ethLayer.(*layers.Ethernet)
 			el := b.EthernetInfo{
 				SrcMAC:       e.SrcMAC.String(),
 				DstMAC:       e.DstMAC.String(),
@@ -90,11 +101,26 @@ func wsAnalizer(c *websocket.Conn) {
 				el.VLAN = &v.VLANIdentifier
 			}
 			info.Ethernet = &el
+			hasEthernet = true
+		}
+
+		// Diagnostic log if WiFi interface shows Ethernet but not Dot11
+		isLikelyWifiInterface := strings.Contains(b.Monitor, "wlan") || strings.Contains(b.Monitor, "wlp") || strings.Contains(b.Monitor, "ath") || strings.Contains(b.Monitor, "wifi")
+		if isLikelyWifiInterface && hasEthernet && !hasDot11 {
+			log.Printf("DEBUG: WiFi interface (%s) packet seen as Ethernet without Dot11. LinkType: %s", b.Monitor, monitor.LinkType().String())
+			var detectedLayerTypes []string
+			for _, layer := range packet.Layers() {
+				detectedLayerTypes = append(detectedLayerTypes, layer.LayerType().String())
+			}
+			log.Printf("DEBUG: Detected layers: %v", detectedLayerTypes)
+			if ethLayerConv, ok := packet.Layer(layers.LayerTypeEthernet).(*layers.Ethernet); ok {
+				log.Printf("DEBUG: Ethernet Type: %s, Payload Length: %d", ethLayerConv.EthernetType.String(), len(ethLayerConv.Payload)) // Corrected .Payload() to .Payload
+			}
 		}
 
 		// LLC
-		if llc := packet.Layer(layers.LayerTypeLLC); llc != nil {
-			l := llc.(*layers.LLC)
+		if llcLayer := packet.Layer(layers.LayerTypeLLC); llcLayer != nil {
+			l := llcLayer.(*layers.LLC)
 			ll := b.LLCInfo{
 				DSAP:    l.DSAP,
 				SSAP:    l.SSAP,
