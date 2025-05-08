@@ -1,7 +1,12 @@
 package view
 
 import (
-	"log"
+	// For exec.Command output
+	"fmt"     // For error formatting
+	"log"     // For OS-specific logic
+	"os/exec" // For running airmon-ng
+	"regexp"  // For parsing airmon-ng output
+	"runtime" // For GOOS
 	"strings"
 
 	b "github.com/JaredMijailRE/IEEE802Sniffer/base"
@@ -28,24 +33,90 @@ func SetupView(app *fiber.App) {
 
 // analizer the packets and send them to the websocket
 func wsAnalizer(c *websocket.Conn) {
+	log.Println("New WebSocket connection for /ws/analizer")
 
 	if b.Monitor == "" {
-		log.Println("Monitor not initialized")
+		log.Println("Monitor interface not initialized in config")
+		_ = c.WriteMessage(websocket.TextMessage, []byte("Error: Monitor interface not configured on the server."))
 		c.Close()
 		return
 	}
 
-	monitor, err := pcap.OpenLive(b.Monitor, 262144, true, pcap.BlockForever)
+	actualInterfaceToSniff := b.Monitor
+	var airmonManagedInterface string = ""
+
+	if runtime.GOOS == "linux" {
+		log.Printf("Linux detected. Attempting to manage interface %s with airmon-ng.", b.Monitor)
+
+		// Step 1: Run airmon-ng check kill
+		log.Println("Running: sudo airmon-ng check kill")
+		cmdCheckKill := exec.Command("sudo", "airmon-ng", "check", "kill")
+		checkKillOutput, errCheckKill := cmdCheckKill.CombinedOutput()
+		if errCheckKill != nil {
+			log.Printf("Warning: 'sudo airmon-ng check kill' failed: %v. Output: %s", errCheckKill, string(checkKillOutput))
+		} else {
+			log.Printf("'sudo airmon-ng check kill' output: %s", string(checkKillOutput))
+		}
+
+		// Step 2: Start monitor mode with airmon-ng
+		log.Printf("Running: sudo airmon-ng start %s", b.Monitor)
+		cmdStart := exec.Command("sudo", "airmon-ng", "start", b.Monitor)
+		startOutput, errStart := cmdStart.CombinedOutput()
+
+		if errStart != nil {
+			log.Printf("Error running 'sudo airmon-ng start %s': %v. Output: %s", b.Monitor, errStart, string(startOutput))
+			log.Println("Falling back to using original interface name. It might already be in monitor mode or pcap.OpenLive might succeed.")
+		} else { // airmon-ng start command was successful
+			log.Printf("'sudo airmon-ng start %s' command successful. Output: %s", b.Monitor, string(startOutput))
+			parsedNewInterface := ""
+			re := regexp.MustCompile(`(?i)(?:on|to|enabled)\s+((?:\[phy\d+\])?\w+mon)\b`)
+			matches := re.FindStringSubmatch(string(startOutput))
+
+			if len(matches) > 1 {
+				parsedNewInterface = matches[1]
+				log.Printf("Potential monitor interface name from airmon-ng output: %s", parsedNewInterface)
+
+				// Remove [phyX] prefix if present (e.g. [phy0]wlan0mon -> wlan0mon)
+				rePhy := regexp.MustCompile(`^\[phy\d+\]`)
+				actualInterfaceToSniff = rePhy.ReplaceAllString(parsedNewInterface, "")
+				airmonManagedInterface = actualInterfaceToSniff
+				log.Printf("Using interface %s for sniffing (derived from %s)", actualInterfaceToSniff, parsedNewInterface)
+			} else {
+				log.Printf("Could not parse a new '...mon' interface name from 'airmon-ng start' output. Output was: %s", string(startOutput))
+				log.Println("Assuming airmon-ng enabled monitor mode on the original interface name or the name is otherwise unchanged by 'airmon-ng start'.")
+				actualInterfaceToSniff = b.Monitor
+				airmonManagedInterface = b.Monitor
+			}
+		}
+	}
+
+	if airmonManagedInterface != "" && runtime.GOOS == "linux" {
+		defer func(ifaceToStop string) {
+			log.Printf("Deferred action: Attempting to stop monitor mode on interface '%s' using 'sudo airmon-ng stop %s'", ifaceToStop, ifaceToStop)
+			cmdStop := exec.Command("sudo", "airmon-ng", "stop", ifaceToStop)
+			stopOutput, errStop := cmdStop.CombinedOutput()
+			if errStop != nil {
+				log.Printf("Error running 'sudo airmon-ng stop %s': %v. Output: %s", ifaceToStop, errStop, string(stopOutput))
+			} else {
+				log.Printf("'sudo airmon-ng stop %s' successful. Output: %s", ifaceToStop, string(stopOutput))
+			}
+		}(airmonManagedInterface)
+	}
+
+	log.Printf("Attempting to open live capture on interface: %s", actualInterfaceToSniff)
+	monitorHandle, err := pcap.OpenLive(actualInterfaceToSniff, 262144, true, pcap.BlockForever)
 	if err != nil {
-		log.Printf("Error creating the monitor %s: %v", b.Monitor, err)
+		errMsg := fmt.Sprintf("Error creating pcap handle on interface %s: %v", actualInterfaceToSniff, err)
+		log.Println(errMsg)
+		_ = c.WriteMessage(websocket.TextMessage, []byte("Error: "+errMsg))
 		c.Close()
 		return
 	}
-	defer monitor.Close()
+	defer monitorHandle.Close()
 
-	log.Printf("Sniffing on interface %s with link type: %s", b.Monitor, monitor.LinkType().String())
+	log.Printf("Successfully opened interface %s for sniffing. Link type: %s", actualInterfaceToSniff, monitorHandle.LinkType().String())
 
-	packetSource := gopacket.NewPacketSource(monitor, monitor.LinkType())
+	packetSource := gopacket.NewPacketSource(monitorHandle, monitorHandle.LinkType())
 
 	for packet := range packetSource.Packets() {
 		info := b.FrameInfo{
@@ -53,8 +124,6 @@ func wsAnalizer(c *websocket.Conn) {
 			PayloadLen: len(packet.Data()),
 		}
 
-		// Layer presence flags
-		// hasRadiotap := false // Removed as it's not used elsewhere for now
 		hasDot11 := false
 		hasEthernet := false
 
@@ -68,7 +137,6 @@ func wsAnalizer(c *websocket.Conn) {
 				DBMAntennaSig: r.DBMAntennaSignal,
 				Antenna:       uint8(r.Antenna),
 			}
-			// hasRadiotap = true // Not strictly needed for current logic if only used for this log block
 		}
 
 		if dot11Layer := packet.Layer(layers.LayerTypeDot11); dot11Layer != nil {
@@ -104,10 +172,9 @@ func wsAnalizer(c *websocket.Conn) {
 			hasEthernet = true
 		}
 
-		// Diagnostic log if WiFi interface shows Ethernet but not Dot11
-		isLikelyWifiInterface := strings.Contains(b.Monitor, "wlan") || strings.Contains(b.Monitor, "wlp") || strings.Contains(b.Monitor, "ath") || strings.Contains(b.Monitor, "wifi")
+		isLikelyWifiInterface := strings.Contains(actualInterfaceToSniff, "wlan") || strings.Contains(actualInterfaceToSniff, "wlp") || strings.Contains(actualInterfaceToSniff, "ath") || strings.Contains(actualInterfaceToSniff, "wifi") || strings.HasSuffix(actualInterfaceToSniff, "mon")
 		if isLikelyWifiInterface && hasEthernet && !hasDot11 {
-			log.Printf("DEBUG: WiFi interface (%s) packet seen as Ethernet without Dot11. LinkType: %s", b.Monitor, monitor.LinkType().String())
+			log.Printf("DEBUG: WiFi-like interface (%s) packet seen as Ethernet without Dot11. Pcap LinkType: %s", actualInterfaceToSniff, monitorHandle.LinkType().String())
 			var detectedLayerTypes []string
 			for _, layer := range packet.Layers() {
 				detectedLayerTypes = append(detectedLayerTypes, layer.LayerType().String())
@@ -131,8 +198,9 @@ func wsAnalizer(c *websocket.Conn) {
 
 		// Enviar JSON
 		if err := c.WriteJSON(info); err != nil {
-			log.Println("Error enviando JSON:", err)
-			return
+			log.Println("Error enviando JSON via WebSocket:", err)
+			return // Exit goroutine for this connection
 		}
 	}
+	log.Println("Packet source closed for", actualInterfaceToSniff)
 }
