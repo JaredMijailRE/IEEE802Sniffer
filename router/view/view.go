@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/websocket/v2"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/google/gopacket/pcap"
 )
 
 func SetupView(app *fiber.App) {
@@ -24,12 +25,19 @@ func SetupView(app *fiber.App) {
 }
 
 func wsAnalizer(c *websocket.Conn) {
-	if b.Monitor == nil {
+
+	if b.Monitor == "" {
 		log.Println("Monitor not initialized")
 		return
 	}
 
-	packetSource := gopacket.NewPacketSource(b.Monitor, b.Monitor.LinkType())
+	monitor, err := pcap.OpenLive(b.Monitor, 262144, true, pcap.BlockForever)
+	if err != nil {
+		log.Printf("error creating the monitor %s", err)
+	}
+	defer monitor.Close()
+
+	packetSource := gopacket.NewPacketSource(monitor, monitor.LinkType())
 
 	for packet := range packetSource.Packets() {
 		info := b.FrameInfo{

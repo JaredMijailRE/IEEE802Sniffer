@@ -166,8 +166,8 @@ const checkStatus = async () => {
   try {
     const response = await fetch('http://localhost:3000/status')
     const status = await response.json()
-    isConnected.value = status.devices && status.monitor
-    if (isConnected.value && !ws.value) {
+    isConnected.value = status.devices 
+    if (isConnected.value && !ws.value && status.monitor != "") {
       connectWebSocket()
     }
   } catch (error) {

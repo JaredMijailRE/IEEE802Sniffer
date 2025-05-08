@@ -7,7 +7,7 @@ import (
 )
 
 var (
-	Monitor *pcap.Handle
+	Monitor string
 	Devices []pcap.Interface
 )
 
@@ -21,10 +21,6 @@ func Get_divices() {
 
 func Set_monitor(index uint8) {
 	device := Devices[index]
-	var err error
 	fmt.Printf("Opening device: %s\n", device.Name)
-	Monitor, err = pcap.OpenLive(device.Name, 262144, true, pcap.BlockForever)
-	if err != nil {
-		fmt.Printf("Error opening device: %v", err)
-	}
+	Monitor = device.Name
 }

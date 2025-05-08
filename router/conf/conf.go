@@ -19,7 +19,7 @@ func SetupConf(app *fiber.App) {
 func statusBackend(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"devices": base.Devices != nil,
-		"monitor": base.Monitor != nil,
+		"monitor": base.Monitor,
 	})
 }
 
