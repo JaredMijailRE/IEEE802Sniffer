@@ -104,7 +104,8 @@ func wsAnalizer(c *websocket.Conn) {
 	}
 
 	log.Printf("Attempting to open live capture on interface: %s", actualInterfaceToSniff)
-	monitorHandle, err := pcap.OpenLive(actualInterfaceToSniff, 262144, true, pcap.BlockForever)
+	// Add a read timeout to the pcap handle
+	handle, err := pcap.OpenLive(actualInterfaceToSniff, 262144, true, pcap.BlockForever) // Keep BlockForever for now, but we'll use SetReadTimeout later if needed with gopacket's PacketSource
 	if err != nil {
 		errMsg := fmt.Sprintf("Error creating pcap handle on interface %s: %v", actualInterfaceToSniff, err)
 		log.Println(errMsg)
@@ -112,13 +113,35 @@ func wsAnalizer(c *websocket.Conn) {
 		c.Close()
 		return
 	}
-	defer monitorHandle.Close()
+	defer handle.Close()
 
-	log.Printf("Successfully opened interface %s for sniffing. Link type: %s", actualInterfaceToSniff, monitorHandle.LinkType().String())
+	// It seems gopacket.NewPacketSource with pcap.BlockForever doesn't directly benefit from handle.SetReadTimeout.
+	// Instead, the blocking nature is handled by the Packets() channel.
+	// We will add logging to see if packets are being received from the source.
 
-	packetSource := gopacket.NewPacketSource(monitorHandle, monitorHandle.LinkType())
+	log.Printf("Successfully opened interface %s for sniffing. Link type: %s", actualInterfaceToSniff, handle.LinkType().String())
 
-	for packet := range packetSource.Packets() {
+	packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
+	log.Println("Packet source created. Waiting for packets...")
+	packetsReceived := 0
+	loopIterations := 0
+
+	// Create a ticker to log if we are stuck waiting for packets
+	// ticker := time.NewTicker(5 * time.Second) // Removed time import for now
+	// defer ticker.Stop()
+
+	for packet := range packetSource.Packets() { // This is a blocking call until a packet arrives or the source closes
+		loopIterations++
+		packetsReceived++
+		if packetsReceived%10 == 0 { // Log every 10 packets received
+			log.Printf("Processed %d packets from %s (loop iterations: %d)...", packetsReceived, actualInterfaceToSniff, loopIterations)
+		}
+		// If packet is nil, the source is closing or has an error.
+		if packet == nil {
+			log.Printf("Packet source on %s returned a nil packet. Closing capture.", actualInterfaceToSniff)
+			break
+		}
+
 		info := b.FrameInfo{
 			Timestamp:  packet.Metadata().Timestamp,
 			PayloadLen: len(packet.Data()),
@@ -174,7 +197,7 @@ func wsAnalizer(c *websocket.Conn) {
 
 		isLikelyWifiInterface := strings.Contains(actualInterfaceToSniff, "wlan") || strings.Contains(actualInterfaceToSniff, "wlp") || strings.Contains(actualInterfaceToSniff, "ath") || strings.Contains(actualInterfaceToSniff, "wifi") || strings.HasSuffix(actualInterfaceToSniff, "mon")
 		if isLikelyWifiInterface && hasEthernet && !hasDot11 {
-			log.Printf("DEBUG: WiFi-like interface (%s) packet seen as Ethernet without Dot11. Pcap LinkType: %s", actualInterfaceToSniff, monitorHandle.LinkType().String())
+			log.Printf("DEBUG: WiFi-like interface (%s) packet seen as Ethernet without Dot11. Pcap LinkType: %s", actualInterfaceToSniff, handle.LinkType().String())
 			var detectedLayerTypes []string
 			for _, layer := range packet.Layers() {
 				detectedLayerTypes = append(detectedLayerTypes, layer.LayerType().String())
@@ -202,5 +225,5 @@ func wsAnalizer(c *websocket.Conn) {
 			return // Exit goroutine for this connection
 		}
 	}
-	log.Println("Packet source closed for", actualInterfaceToSniff)
+	log.Printf("Packet source channel closed for %s. Total packets received: %d, Loop iterations: %d", actualInterfaceToSniff, packetsReceived, loopIterations)
 }
