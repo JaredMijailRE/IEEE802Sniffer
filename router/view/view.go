@@ -11,6 +11,7 @@ import (
 	"github.com/google/gopacket/pcap"
 )
 
+// setup the view for the websocket
 func SetupView(app *fiber.App) {
 	// middleware para websockets
 	app.Use("/ws", func(c *fiber.Ctx) error {
@@ -24,6 +25,7 @@ func SetupView(app *fiber.App) {
 	app.Get("/ws/analizer/:type", websocket.New(wsAnalizer))
 }
 
+// analizer the packets and send them to the websocket
 func wsAnalizer(c *websocket.Conn) {
 
 	if b.Monitor == "" {

@@ -17,7 +17,7 @@
         <div v-for="(packet, index) in packets" :key="index" class="packet-card">
           <div class="packet-header">
             <span class="timestamp">{{ formatTimestamp(packet.timestamp) }}</span>
-            <span class="packet-type">{{ packet.ethernet?.eth_type || 'Unknown' }}</span>
+            <span class="packet-type">{{ packet.dot11?.type || packet.ethernet?.eth_type || 'Unknown' }}</span>
           </div>
           
           <div class="packet-details">
