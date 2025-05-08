@@ -2,8 +2,11 @@ package view
 
 import (
 	// For exec.Command output
-	"fmt"     // For error formatting
-	"log"     // For OS-specific logic
+	// For exec.Command output
+	"fmt" // For error formatting
+	"log" // For OS-specific logic
+
+	// For OS-specific logic
 	"os/exec" // For running airmon-ng
 	"regexp"  // For parsing airmon-ng output
 	"runtime" // For GOOS
@@ -37,7 +40,10 @@ func wsAnalizer(c *websocket.Conn) {
 
 	if b.Monitor == "" {
 		log.Println("Monitor interface not initialized in config")
-		_ = c.WriteMessage(websocket.TextMessage, []byte("Error: Monitor interface not configured on the server."))
+		// Send error as JSON
+		if err := c.WriteJSON(fiber.Map{"error": "Monitor interface not configured on the server."}); err != nil {
+			log.Println("Error sending JSON error to client (monitor config):", err)
+		}
 		c.Close()
 		return
 	}
@@ -109,15 +115,14 @@ func wsAnalizer(c *websocket.Conn) {
 	if err != nil {
 		errMsg := fmt.Sprintf("Error creating pcap handle on interface %s: %v", actualInterfaceToSniff, err)
 		log.Println(errMsg)
-		_ = c.WriteMessage(websocket.TextMessage, []byte("Error: "+errMsg))
+		// Send error as JSON
+		if err := c.WriteJSON(fiber.Map{"error": errMsg}); err != nil {
+			log.Println("Error sending JSON error to client (pcap openlive):", err)
+		}
 		c.Close()
 		return
 	}
 	defer handle.Close()
-
-	// It seems gopacket.NewPacketSource with pcap.BlockForever doesn't directly benefit from handle.SetReadTimeout.
-	// Instead, the blocking nature is handled by the Packets() channel.
-	// We will add logging to see if packets are being received from the source.
 
 	log.Printf("Successfully opened interface %s for sniffing. Link type: %s", actualInterfaceToSniff, handle.LinkType().String())
 
@@ -126,17 +131,12 @@ func wsAnalizer(c *websocket.Conn) {
 	packetsReceived := 0
 	loopIterations := 0
 
-	// Create a ticker to log if we are stuck waiting for packets
-	// ticker := time.NewTicker(5 * time.Second) // Removed time import for now
-	// defer ticker.Stop()
-
-	for packet := range packetSource.Packets() { // This is a blocking call until a packet arrives or the source closes
+	for packet := range packetSource.Packets() {
 		loopIterations++
 		packetsReceived++
 		if packetsReceived%10 == 0 { // Log every 10 packets received
 			log.Printf("Processed %d packets from %s (loop iterations: %d)...", packetsReceived, actualInterfaceToSniff, loopIterations)
 		}
-		// If packet is nil, the source is closing or has an error.
 		if packet == nil {
 			log.Printf("Packet source on %s returned a nil packet. Closing capture.", actualInterfaceToSniff)
 			break
