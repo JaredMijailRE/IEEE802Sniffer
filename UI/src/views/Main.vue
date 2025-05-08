@@ -17,7 +17,7 @@
         <div v-for="(packet, index) in packets" :key="index" class="packet-card">
           <div class="packet-header">
             <span class="timestamp">{{ formatTimestamp(packet.timestamp) }}</span>
-            <span class="packet-type">{{ packet.ethernet?.eth_type || 'Unknown' }}</span>
+            <span class="packet-type">{{ packet.dot11?.type || packet.ethernet?.eth_type || 'Unknown' }}</span>
           </div>
           
           <div class="packet-details">
@@ -161,13 +161,14 @@ const packets = ref([])
 const ws = ref(null)
 const isConnected = ref(false)
 const isPaused = ref(false)
+const serverError = ref(null)
 
 const checkStatus = async () => {
   try {
     const response = await fetch('http://localhost:3000/status')
     const status = await response.json()
-    isConnected.value = status.devices && status.monitor
-    if (isConnected.value && !ws.value) {
+    isConnected.value = status.devices 
+    if (isConnected.value && !ws.value && status.monitor != "") {
       connectWebSocket()
     }
   } catch (error) {
@@ -183,17 +184,38 @@ const connectWebSocket = () => {
 
   ws.value = new WebSocket('ws://localhost:3000/ws/analizer/raw')
 
+  ws.value.onopen = () => {
+    serverError.value = null;
+  };
+
   ws.value.onmessage = (event) => {
-    if (!isPaused.value) {
-      const packet = JSON.parse(event.data)
-      packets.value.unshift(packet)
-      
-      // Mantener solo los últimos 10 paquetes
-      if (packets.value.length > 10) {
-        packets.value.pop()
-      }
+    if (isPaused.value) {
+      return;
     }
-  }
+
+    try {
+      const receivedData = JSON.parse(event.data);
+
+      if (receivedData.error) {
+        console.error('Server WebSocket Error:', receivedData.error);
+        serverError.value = receivedData.error;
+        isConnected.value = false;
+      } else {
+        const packet = receivedData;
+        packets.value.unshift(packet);
+        
+        if (packets.value.length > 20) { 
+          packets.value.pop();
+        }
+        serverError.value = null;
+        if (!isConnected.value) isConnected.value = true;
+      }
+    } catch (e) {
+      console.error('Error parsing WebSocket message or processing packet:', e);
+      console.error('Received raw data:', event.data); 
+      serverError.value = "Error processing data from server.";
+    }
+  };
 
   ws.value.onerror = (error) => {
     console.error('WebSocket error:', error)
