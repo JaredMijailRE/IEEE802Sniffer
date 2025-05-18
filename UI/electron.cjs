@@ -23,9 +23,6 @@ function createWindow () {
   } else {
     console.error('index.html not found at:', indexPath)
   }
-
-  // Abre las DevTools en desarrollo
-  win.webContents.openDevTools()
 }
 
 app.whenReady().then(createWindow)

@@ -1,12 +1,15 @@
 {
-  "name": "sss",
-  "version": "0.0.0",
+  "name": "ieee802sniffer",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "main": "electron.cjs",
+  "author": "Happy Industries",
+  "description": "A web app interface to display the information of an sniffer and control it",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "app": "electron-builder",
     "start": "bun run build && electron .",
     "preview": "vite preview",
     "lint:oxlint": "oxlint . --fix -D correctness --ignore-path .gitignore",
@@ -16,13 +19,14 @@
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "6.5.1",
-    "electron": "^36.1.0",
     "fortawesome": "^0.0.1-security",
     "vue": "^3.5.13",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
+    "electron": "^36.1.0",
+    "electron-builder": "^26.0.12",
     "@vitejs/plugin-vue": "^5.2.3",
     "@vitejs/plugin-vue-jsx": "^4.1.2",
     "@vue/eslint-config-prettier": "^10.2.0",
@@ -35,5 +39,25 @@
     "prettier": "3.5.3",
     "vite": "^6.2.4",
     "vite-plugin-vue-devtools": "^7.7.2"
+  },
+  "build": {
+    "appId": "com.happyindustries.ieee802sniffer",
+    "productName": "IEEE802 Sniffer",
+    "files": [
+      "dist/",
+      "electron.cjs"
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Development",
+      "icon": "assets/icon.png"
+    }
   }
 }
